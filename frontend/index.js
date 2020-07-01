@@ -19,13 +19,14 @@ import {
     FormField,
     Button,
     Text,
+    Tooltip,
     ViewportConstraint
 } from '@airtable/blocks/ui';
 import {settingsButton, cursor} from '@airtable/blocks';
 import { FieldType, ViewType } from '@airtable/blocks/models';
 import React, {useState} from 'react';
 
-function UnitsAssistantBlock() {
+function InventoryAssistantBlock() {
     const base = useBase();
     const globalConfig = useGlobalConfig();
     
@@ -115,6 +116,8 @@ function UnitsAssistantBlock() {
     const recordIsAvailable = mode == 1 && availableUnits.map(y => y.id).includes(record.id) ? true : false
     const hasHistory = linkedLog != null && linkedLog.length > 0 ? true : false
     
+    const checkCanCreateUnit = unitsTable ? unitsTable.checkPermissionsForCreateRecord() : null
+    
     async function createNewUnit() {
         const newRecordId = await unitsTable.createRecordAsync({
             [unitsLinkItemsFieldId]: [{id: record.id}],
@@ -126,19 +129,21 @@ function UnitsAssistantBlock() {
         query.unloadData()
     }
     
-    // Log Actions
+    // Log Actions (variables and functions for use in the action buttons)
     const recordIsResolved = mode == 2 && unresolvedLog.map(y => y.id).includes(record.id) ? false : true
+    
+    const checkCanCreateLog = logTable ? logTable.checkPermissionsForCreateRecord() : null
     
     async function viewHistory() {
         const recordA = await expandRecordList(linkedLog)
     }
     
     async function checkOutUnitAuto() {
-        let input = mode == 0 ? bestAvailable : record
+        const logCheckOutInput = mode == 0 ? bestAvailable : record
         const newRecordId = await logTable.createRecordAsync({
-            [logLinkUnitsFieldId]: [{id: input.id}],
+            [logLinkUnitsFieldId]: [{id: logCheckOutInput.id}],
             [logCheckOutDateFieldId]: today,
-            [logCheckOutConditionFieldId]: {name: input.getCellValue(unitsConditionFieldId).name}
+            [logCheckOutConditionFieldId]: {name: logCheckOutInput.getCellValue(unitsConditionFieldId).name}
         })
         const query = await logTable.selectRecordsAsync()
         expandRecord(query.getRecordById(newRecordId))
@@ -146,12 +151,12 @@ function UnitsAssistantBlock() {
     }
 
     async function checkOutUnitSelect() {
-        const input = await expandRecordPickerAsync(availableLinkedUnits)
-        if (input) {
+        const logCheckOutInput = await expandRecordPickerAsync(availableLinkedUnits)
+        if (logCheckOutInput) {
             const newRecordId = await logTable.createRecordAsync({
-                [logLinkUnitsFieldId]: [{id: input.id}],
+                [logLinkUnitsFieldId]: [{id: logCheckOutInput.id}],
                 [logCheckOutDateFieldId]: today,
-                [logCheckOutConditionFieldId]: {name: input.getCellValue(unitsConditionFieldId).name}
+                [logCheckOutConditionFieldId]: {name: logCheckOutInput.getCellValue(unitsConditionFieldId).name}
             })
             const query = await logTable.selectRecordsAsync()
             expandRecord(query.getRecordById(newRecordId))
@@ -159,9 +164,11 @@ function UnitsAssistantBlock() {
         }
     }
     
+    const checkCanUpdateLog = logTable ? logTable.checkPermissionsForUpdateRecord() : null
+    
     async function checkInUnit() {
-        const input = mode == 2 ? record : unresolvedLinkedLog[0]
-        const updatedRecordId = await logTable.updateRecordAsync(input, {
+        const logCheckInInput = mode == 2 ? record : unresolvedLinkedLog[0]
+        const updatedRecordId = await logTable.updateRecordAsync(logCheckInInput, {
             [logCheckInDateFieldId]: today
         })
     }
@@ -185,9 +192,27 @@ function UnitsAssistantBlock() {
         return (
             <React.Fragment>
                 <AssistantContent table={table} record={record}>
-                    <Button marginX={3} marginY={2} icon="duplicate" onClick={createNewUnit}>Add new unit</Button>
-                    <Button marginX={3} marginY={2} icon="checkboxUnchecked" onClick={checkOutUnitAuto} disabled={!anyAvailable}>Check out (auto)</Button>
-                    <Button marginX={3} marginY={2} icon="expand1" onClick={checkOutUnitSelect} disabled={!anyAvailable}>Check out (select)</Button>
+                    <ActionButton
+                        disabledCondition={!checkCanCreateUnit.hasPermission}
+                        tooltipContent={checkCanCreateUnit.reasonDisplayString}
+                        buttonIcon="duplicate"
+                        buttonAction={createNewUnit}
+                        buttonText="Add new unit"
+                    />
+                    <ActionButton
+                        disabledCondition={!checkCanCreateLog.hasPermission || !anyAvailable}
+                        tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "No available units"}
+                        buttonIcon="checkboxUnchecked"
+                        buttonAction={checkOutUnitAuto}
+                        buttonText="Check out (auto)"
+                    />
+                    <ActionButton
+                        disabledCondition={!checkCanCreateLog.hasPermission || !anyAvailable}
+                        tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "No available units"}
+                        buttonIcon="checkboxUnchecked"
+                        buttonAction={checkOutUnitSelect}
+                        buttonText="Check out (select)"
+                    />
                 </AssistantContent>
             </React.Fragment>
         )
@@ -195,9 +220,27 @@ function UnitsAssistantBlock() {
         return (
             <React.Fragment>
                 <AssistantContent table={table} record={record}>
-                    <Button marginX={3} marginY={2} icon="expand1" onClick={viewHistory} disabled={!hasHistory}>View history</Button>
-                    <Button marginX={3} marginY={2} icon="checkboxUnchecked" onClick={checkOutUnitAuto} disabled={!recordIsAvailable}>Check out</Button>
-                    <Button marginX={3} marginY={2} icon="checkboxChecked" onClick={checkInUnit} disabled={recordIsAvailable}>Check in</Button>
+                    <ActionButton
+                        disabledCondition={!hasHistory}
+                        tooltipContent="No log records"
+                        buttonIcon="expand1"
+                        buttonAction={viewHistory}
+                        buttonText="View history"
+                    />
+                    <ActionButton
+                        disabledCondition={!checkCanCreateLog.hasPermission || !recordIsAvailable}
+                        tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "Unit is unavailable"}
+                        buttonIcon="checkboxUnchecked"
+                        buttonAction={checkOutUnitAuto}
+                        buttonText="Check out"
+                    />
+                    <ActionButton
+                        disabledCondition={!checkCanUpdateLog.hasPermission || recordIsAvailable}
+                        tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Unit isn't checked out"}
+                        buttonIcon="checkboxChecked"
+                        buttonAction={checkInUnit}
+                        buttonText="Check in"
+                    />
                 </AssistantContent>
             </React.Fragment>
         )
@@ -205,7 +248,13 @@ function UnitsAssistantBlock() {
         return (
             <React.Fragment>
                 <AssistantContent table={table} record={record}>
-                    <Button marginX={3} marginY={2} icon="checkboxChecked" onClick={checkInUnit} disabled={recordIsResolved}>Check in</Button>
+                    <ActionButton
+                        disabledCondition={!checkCanUpdateLog.hasPermission || recordIsResolved}
+                        tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Record is already resolved"}
+                        buttonIcon="checkboxChecked"
+                        buttonAction={checkInUnit}
+                        buttonText="Check in"
+                    />
                 </AssistantContent>
             </React.Fragment>
         )
@@ -224,6 +273,22 @@ function UnitsAssistantBlock() {
             </React.Fragment>
         )
     }
+}
+
+function ActionButton(props) {
+    return (
+        <Tooltip
+            disabled={!props.disabledCondition}
+            content={props.tooltipContent}
+            placementX={Tooltip.placements.CENTER}
+            placementY={Tooltip.placements.BOTTOM}
+            shouldHideTooltipOnClick={true}
+          >
+            <Box marginX={3} marginY={2}>
+                <Button variant="primary" icon={props.buttonIcon} onClick={props.buttonAction} disabled={props.disabledCondition}>{props.buttonText}</Button>
+            </Box>
+        </Tooltip>
+    )
 }
 
 function AssistantContent({children, table, record}) {
@@ -425,4 +490,4 @@ function BlockContainer({children}) {
     )
 }
 
-initializeBlock(() => <UnitsAssistantBlock />);
+initializeBlock(() => <InventoryAssistantBlock />);
