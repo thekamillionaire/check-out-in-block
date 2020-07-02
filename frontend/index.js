@@ -7,18 +7,22 @@ import {
     useRecordById,
     useRecordActionData,
     Box,
+    Dialog,
     Heading,
     Icon,
     TablePickerSynced,
     ViewPickerSynced,
     FieldPickerSynced,
+    SwitchSynced,
     expandRecord,
     expandRecordList,
     expandRecordPickerAsync,
     RecordCard,
     FormField,
     Button,
+    Select,
     Text,
+    TextButton,
     Tooltip,
     ViewportConstraint
 } from '@airtable/blocks/ui';
@@ -31,13 +35,15 @@ function InventoryAssistantBlock() {
     const globalConfig = useGlobalConfig();
     
     const GlobalConfigKeys = {
-        ITEMS_TABLE_ID: "itemsTableId",
-        ITEMS_LINK_UNITS_FIELD_ID: "itemsLinkUnitsFieldId",
         UNITS_TABLE_ID: "unitsTableId",
         UNITS_VIEW_ID: "unitsViewId",
         UNITS_CONDITION_FIELD_ID: "unitsConditionFieldId",
         UNITS_PURCHASE_DATE_FIELD_ID: "unitsPurchaseDateFieldId",
+        UNITS_LINK_ITEMS_FIELD_ID: "unitsLinkItemsFieldId",
         UNITS_LINK_LOG_FIELD_ID: "unitsLinkLogFieldId",
+        UNITS_TRACK_ITEMS: "unitsTrackItems",
+        UNITS_TRACK_CONDITION: "unitsTrackCondition",
+        UNITS_TRACK_ORIGIN_DATE: "unitsTrackOriginDate",
         LOG_TABLE_ID: "logTableId",
         LOG_VIEW_ID: "logViewId",
         LOG_OUT_CONDITION_FIELD_ID: "logCheckOutConditionFieldId",
@@ -46,14 +52,15 @@ function InventoryAssistantBlock() {
         LOG_IN_DATE_FIELD_ID: "logCheckInDateFieldId"
     }
     
-    const itemsTableId = globalConfig.get(GlobalConfigKeys.ITEMS_TABLE_ID)
-    const itemsLinkUnitsFieldId = globalConfig.get(GlobalConfigKeys.ITEMS_LINK_UNITS_FIELD_ID)
-    
     const unitsTableId = globalConfig.get(GlobalConfigKeys.UNITS_TABLE_ID)
     const unitsViewId = globalConfig.get(GlobalConfigKeys.UNITS_VIEW_ID)
     const unitsConditionFieldId = globalConfig.get(GlobalConfigKeys.UNITS_CONDITION_FIELD_ID)
     const unitsPurchaseDateFieldId = globalConfig.get(GlobalConfigKeys.UNITS_PURCHASE_DATE_FIELD_ID)
+    const unitsLinkItemsFieldId = globalConfig.get(GlobalConfigKeys.UNITS_LINK_ITEMS_FIELD_ID)
     const unitsLinkLogFieldId = globalConfig.get(GlobalConfigKeys.UNITS_LINK_LOG_FIELD_ID)
+    const unitsTrackItems = globalConfig.get(GlobalConfigKeys.UNITS_TRACK_ITEMS)
+    const unitsTrackCondition = globalConfig.get(GlobalConfigKeys.UNITS_TRACK_CONDITION)
+    const unitsTrackOriginDate = globalConfig.get(GlobalConfigKeys.UNITS_TRACK_ORIGIN_DATE)
     
     const logTableId = globalConfig.get(GlobalConfigKeys.LOG_TABLE_ID)
     const logViewId = globalConfig.get(GlobalConfigKeys.LOG_VIEW_ID)
@@ -63,27 +70,7 @@ function InventoryAssistantBlock() {
     const logCheckInDateFieldId = globalConfig.get(GlobalConfigKeys.LOG_IN_DATE_FIELD_ID)
     
     // Check if all settings options have values
-    const initialSetupDone = itemsTableId && itemsLinkUnitsFieldId && unitsTableId && unitsViewId && unitsConditionFieldId && unitsPurchaseDateFieldId && unitsPurchaseDateFieldId && unitsLinkLogFieldId && logTableId && logViewId && logCheckOutConditionFieldId && logCheckOutDateFieldId && logCheckInConditionFieldId && logCheckInDateFieldId ? true : false
-    
-    // Get tables, view ids, and field ids
-    const itemsTable = base.getTableByIdIfExists(itemsTableId)
-    const itemsLinkUnitsField = itemsTable ? itemsTable.getFieldIfExists(itemsLinkUnitsFieldId) : null
-    
-    const unitsTable = base.getTableByIdIfExists(unitsTableId)
-    const unitsView = unitsTable ? unitsTable.getViewByIdIfExists(unitsViewId) : null
-    const availableUnits = useRecords(unitsView)
-    const unitsLinkItemsFieldId = itemsLinkUnitsField ? itemsLinkUnitsField.options.inverseLinkFieldId : null
-    const unitsConditionsField = unitsTable ? unitsTable.getFieldIfExists(unitsConditionFieldId) : null
-    const unitsConditions = unitsConditionsField ? unitsConditionsField.options.choices.map(x => x.name) : null
-    const unitsLinkLogField = unitsTable ? unitsTable.getFieldIfExists(unitsLinkLogFieldId) : null
-    const bestCondition = unitsConditions ? unitsConditions[0] : null
-    
-    const logTable = base.getTableByIdIfExists(logTableId)
-    const logView = logTable ? logTable.getViewByIdIfExists(logViewId) : null
-    const unresolvedLog = useRecords(logView)
-    const logLinkUnitsFieldId = unitsLinkLogField ? unitsLinkLogField.options.inverseLinkFieldId : null
-    
-    const today = new Date()
+    const initialSetupDone = unitsTableId && unitsViewId && unitsConditionFieldId && unitsPurchaseDateFieldId && unitsLinkItemsFieldId && unitsLinkLogFieldId && logTableId && logViewId && logCheckOutConditionFieldId && logCheckOutDateFieldId && logCheckInConditionFieldId && logCheckInDateFieldId ? true : false
     
     // Enable the settings button
     const [isShowingSettings, setIsShowingSettings] = useState(!initialSetupDone);
@@ -91,13 +78,41 @@ function InventoryAssistantBlock() {
         initialSetupDone && setIsShowingSettings(!isShowingSettings);
     });
     
+    // Get tables, view ids, and field ids
+    const unitsTable = base.getTableByIdIfExists(unitsTableId)
+    const availableUnits = useRecords(unitsTable ? unitsTable.getViewByIdIfExists(unitsViewId) : null)
+    const unitsConditionsField = unitsTable ? unitsTable.getFieldByIdIfExists(unitsConditionFieldId) : null
+    const unitsConditions = unitsConditionsField ? unitsConditionsField.options.choices.map(x => x.name) : null
+    const unitsLinkItemsField = unitsTable ? unitsTable.getFieldByIdIfExists(unitsLinkItemsFieldId) : null
+    const unitsLinkLogField = unitsTable ? unitsTable.getFieldByIdIfExists(unitsLinkLogFieldId) : null
+    
+    const itemsTableId = unitsLinkItemsField ? unitsLinkItemsField.options.linkedTableId : null
+    const itemsTable = base.getTableByIdIfExists(itemsTableId)
+    const itemsLinkUnitsFieldId = unitsLinkItemsField ? unitsLinkItemsField.options.inverseLinkFieldId : null
+    const itemsLinkUnitsField = itemsTable ? itemsTable.getFieldByIdIfExists(itemsLinkUnitsFieldId) : null
+    
+    const logTable = base.getTableByIdIfExists(logTableId)
+    const checkedOutRecords = useRecords(logTable ? logTable.getViewByIdIfExists(logViewId) : null)
+    const logLinkUnitsFieldId = unitsLinkLogField ? unitsLinkLogField.options.inverseLinkFieldId : null
+    
+    const logCheckOutConditionField = logTable ? logTable.getFieldByIdIfExists(logCheckOutConditionFieldId) : null
+    const logCheckOutConditions = logCheckOutConditionField ? logCheckOutConditionField.options.choices.map(x => x.name) : null
+    const logCheckInConditionField = logTable ? logTable.getFieldByIdIfExists(logCheckInConditionFieldId) : null
+    const logCheckInConditions = logCheckInConditionField ? logCheckInConditionField.options.choices.map(x => x.name) : null
+    const logConditions = logCheckInConditions && logCheckOutConditions ? logCheckOutConditions.filter(x => logCheckInConditions.includes(x)) : null
+    // Return the single select options found in all three conditions fields, prevents errors thrown if trying to copy an incompatable option from another field
+    const sharedConditions = unitsConditions && logConditions ? unitsConditions.filter(x => logConditions.includes(x)) : null
+    const bestCondition = sharedConditions ? sharedConditions[0] : null
+    
+    const today = new Date()
+    
     // Collect info from record button type press
     const recordActionData = useRecordActionData();
     
     const tableId = recordActionData ? recordActionData.tableId : null
     const table = base.getTableByIdIfExists(tableId)
     const tableName = table ? table.name : null
-    const recordId = recordActionData? recordActionData.recordId : null
+    const recordId = recordActionData ? recordActionData.recordId : null
     const record = useRecordById(table, recordId)
     
     // The "mode" determines what action buttons are shown, and the variables used in the async functions
@@ -105,18 +120,22 @@ function InventoryAssistantBlock() {
     const mode = modes.indexOf(tableId)
     
     // Items Actions (variables and functions for use in the action buttons)
-    const linkedUnits = useRecords(record && mode == 0 ? record.selectLinkedRecordsFromCell(itemsLinkUnitsField) : null)
-    const availableLinkedUnits = linkedUnits ? linkedUnits.filter(x => availableUnits.map(y => y.id).includes(x.id)) : null
-    const anyAvailable = availableLinkedUnits != null && availableLinkedUnits.length > 0 ? true : false
-    const bestAvailable = availableLinkedUnits ? availableLinkedUnits.sort((a, b) => (unitsConditions.indexOf(a.getCellValue(unitsConditionFieldId).name) > unitsConditions.indexOf(b.getCellValue(unitsConditionFieldId).name)) ? 1 : -1)[0] : null
+    const unitsRecordsLinkedToItem = useRecords(record && mode == 0 ? record.selectLinkedRecordsFromCell(itemsLinkUnitsField) : null)
+    // Returns records which are available (determined by presence in a view), and which have a Condition cell value that can be used in the other two condition fields
+    const availableLinkedUnits = unitsRecordsLinkedToItem ? 
+          unitsRecordsLinkedToItem.filter(x => availableUnits.map(y => y.id).includes(x.id) && sharedConditions.includes(x.getCellValue(unitsConditionFieldId).name)) : null
+    const anyAvailable = availableLinkedUnits != null && availableLinkedUnits.length ? true : false
+    const bestAvailable = availableLinkedUnits ? 
+          availableLinkedUnits.sort((a, b) => (sharedConditions.indexOf(a.getCellValue(unitsConditionFieldId).name) > sharedConditions.indexOf(b.getCellValue(unitsConditionFieldId).name)) ? 1 : -1)[0] : null
     
     // Units Actions (variables and functions for use in the action buttons)
-    const linkedLog = useRecords(record && mode == 1 ? record.selectLinkedRecordsFromCell(unitsLinkLogField) : null)
-    const unresolvedLinkedLog = linkedLog ? linkedLog.filter(x => unresolvedLog.map(y => y.id).includes(x.id)) : null
+    const logRecordsLinkedToUnit = useRecords(record && mode == 1 ? record.selectLinkedRecordsFromCell(unitsLinkLogField) : null)
+    const checkedOutRecordssLinkedToUnit = logRecordsLinkedToUnit ? logRecordsLinkedToUnit.filter(x => checkedOutRecords.map(y => y.id).includes(x.id)) : null
     const recordIsAvailable = mode == 1 && availableUnits.map(y => y.id).includes(record.id) ? true : false
-    const hasHistory = linkedLog != null && linkedLog.length > 0 ? true : false
+    const hasHistory = logRecordsLinkedToUnit != null && logRecordsLinkedToUnit.length ? true : false
     
     const checkCanCreateUnit = unitsTable ? unitsTable.checkPermissionsForCreateRecord() : null
+    const checkCanUpdateUnit = unitsTable ? unitsTable.checkPermissionsForUpdateRecord() : null
     
     async function createNewUnit() {
         const newRecordId = await unitsTable.createRecordAsync({
@@ -130,12 +149,14 @@ function InventoryAssistantBlock() {
     }
     
     // Log Actions (variables and functions for use in the action buttons)
-    const recordIsResolved = mode == 2 && unresolvedLog.map(y => y.id).includes(record.id) ? false : true
+    const conditionsChoices = sharedConditions ? sharedConditions.map(x => {return ({value: x, label: x})}) : null
+    const recordIsResolved = mode == 2 && checkedOutRecords.map(y => y.id).includes(record.id) ? false : true
+    const unitsRecordsLinkedToLog = useRecords(record && mode == 2 ? record.selectLinkedRecordsFromCell(logLinkUnitsFieldId) : null)
     
     const checkCanCreateLog = logTable ? logTable.checkPermissionsForCreateRecord() : null
     
     async function viewHistory() {
-        const recordA = await expandRecordList(linkedLog)
+        const recordA = await expandRecordList(logRecordsLinkedToUnit)
     }
     
     async function checkOutUnitAuto() {
@@ -166,11 +187,21 @@ function InventoryAssistantBlock() {
     
     const checkCanUpdateLog = logTable ? logTable.checkPermissionsForUpdateRecord() : null
     
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [newCondition, setNewCondition] = useState(null);
+    
     async function checkInUnit() {
-        const logCheckInInput = mode == 2 ? record : unresolvedLinkedLog[0]
-        const updatedRecordId = await logTable.updateRecordAsync(logCheckInInput, {
-            [logCheckInDateFieldId]: today
+        const logCheckInInput = mode == 2 ? record : checkedOutRecordssLinkedToUnit[0]
+        await logTable.updateRecordAsync(logCheckInInput, {
+            [logCheckInDateFieldId]: today,
+            [logCheckInConditionFieldId]: {name: newCondition},
         })
+        const unitInput = mode == 2 ? unitsRecordsLinkedToLog[0] : record
+        await unitsTable.updateRecordAsync(unitInput, {
+            [unitsConditionFieldId]: {name: newCondition}
+        })
+        setNewCondition(null)
+        setIsDialogOpen(false)
     }
     
     // Display the settings module if setup is required
@@ -238,9 +269,19 @@ function InventoryAssistantBlock() {
                         disabledCondition={!checkCanUpdateLog.hasPermission || recordIsAvailable}
                         tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Unit isn't checked out"}
                         buttonIcon="checkboxChecked"
-                        buttonAction={checkInUnit}
+                        buttonAction={() => setIsDialogOpen(true)}
                         buttonText="Check in"
                     />
+                    
+                    {isDialogOpen && (
+                        <Dialog onClose={() => setIsDialogOpen(false)} width="320px">
+                            <Dialog.CloseButton />
+                            <FormField label="What condition is the unit in?" marginBottom={2}>
+                                <Select options={conditionsChoices} value={newCondition} onChange={newValue => setNewCondition(newValue)} />
+                            </FormField>
+                            <Button variant="primary" icon="check" onClick={checkInUnit}>Done</Button>
+                        </Dialog>
+                    )}
                 </AssistantContent>
             </React.Fragment>
         )
@@ -252,9 +293,18 @@ function InventoryAssistantBlock() {
                         disabledCondition={!checkCanUpdateLog.hasPermission || recordIsResolved}
                         tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Record is already resolved"}
                         buttonIcon="checkboxChecked"
-                        buttonAction={checkInUnit}
+                        buttonAction={() => setIsDialogOpen(true)}
                         buttonText="Check in"
                     />
+                    {isDialogOpen && (
+                        <Dialog onClose={() => setIsDialogOpen(false)} width="320px">
+                            <Dialog.CloseButton />
+                            <FormField label="What condition is the unit in?" marginBottom={2}>
+                                <Select options={conditionsChoices} value={newCondition} onChange={newValue => setNewCondition(newValue)} />
+                            </FormField>
+                            <Button variant="primary" icon="check" onClick={checkInUnit}>Done</Button>
+                        </Dialog>
+                    )}
                 </AssistantContent>
             </React.Fragment>
         )
@@ -318,16 +368,16 @@ function AssistantContent({children, table, record}) {
 function SettingsMenu(props) {
     const base = props.base
     
-    const itemsTableId = props.GlobalConfigKeys.ITEMS_TABLE_ID
-    const itemsTable = base.getTableByIdIfExists(props.globalConfig.get(itemsTableId))
-    const itemsLinkUnits = props.GlobalConfigKeys.ITEMS_LINK_UNITS_FIELD_ID
-    
     const unitsTableId = props.GlobalConfigKeys.UNITS_TABLE_ID
     const unitsTable = base.getTableByIdIfExists(props.globalConfig.get(unitsTableId))
     const unitsViewId = props.GlobalConfigKeys.UNITS_VIEW_ID
     const unitsConditionFieldId = props.GlobalConfigKeys.UNITS_CONDITION_FIELD_ID
     const unitsPurchaseDateFieldId = props.GlobalConfigKeys.UNITS_PURCHASE_DATE_FIELD_ID
+    const unitsLinkItemsFieldId = props.GlobalConfigKeys.UNITS_LINK_ITEMS_FIELD_ID
     const unitsLinkLogFieldId = props.GlobalConfigKeys.UNITS_LINK_LOG_FIELD_ID
+    const unitsTrackItems = props.GlobalConfigKeys.UNITS_TRACK_ITEMS
+    const unitsTrackCondition = props.GlobalConfigKeys.UNITS_TRACK_CONDITION
+    const unitsTrackOriginDate = props.GlobalConfigKeys.UNITS_TRACK_ORIGIN_DATE
     
     const logTableId = props.GlobalConfigKeys.LOG_TABLE_ID
     const logTable = base.getTableByIdIfExists(props.globalConfig.get(logTableId))
@@ -337,18 +387,16 @@ function SettingsMenu(props) {
     const logCheckInConditionFieldId = props.GlobalConfigKeys.LOG_IN_CONDITION_FIELD_ID
     const logCheckInDateFieldId = props.GlobalConfigKeys.LOG_IN_DATE_FIELD_ID
     
-    const resetItemsFields = () => {
-        const paths = [
-            {path: [itemsLinkUnits], value: null}
-        ]
-        props.globalConfig.setPathsAsync(paths);
-    }
     const resetUnitsFields = () => {
         const paths = [
             {path: [unitsViewId], value: null},
             {path: [unitsConditionFieldId], value: null},
             {path: [unitsPurchaseDateFieldId], value: null},
-            {path: [unitsLinkLogFieldId], value: null}
+            {path: [unitsLinkItemsFieldId], value: null},
+            {path: [unitsLinkLogFieldId], value: null},
+            {path: [unitsTrackItems], value: null},
+            {path: [unitsTrackCondition], value: null},
+            {path: [unitsTrackOriginDate], value: null}
         ]
         props.globalConfig.setPathsAsync(paths);
     }
@@ -365,27 +413,9 @@ function SettingsMenu(props) {
     
     return(
         <React.Fragment>
-            <Heading marginBottom={4}>Units assistant settings</Heading>
+            <Heading marginBottom={4}>Inventory assistant settings</Heading>
             <Box alignSelf="stretch">
-                <Box margin={-2}  display="flex" flexDirection="row" flexWrap="wrap">
-                    <Box border="thick" borderRadius="large" flex="1 1" margin={2} padding={3}>
-                        <Heading size="small">Items</Heading>
-                        <FormField label="Items table" description="Table containing the types of items" marginY={2}>
-                            <TablePickerSynced 
-                                globalConfigKey={itemsTableId}
-                                onChange={resetItemsFields}
-                            />
-                        </FormField>
-                        <FormField label="Units link" description="Field linking to the units table" marginY={2}>
-                            <FieldPickerSynced
-                                globalConfigKey={itemsLinkUnits}
-                                table={itemsTable}
-                                allowedTypes={[
-                                    FieldType.MULTIPLE_RECORD_LINKS
-                                ]}
-                            />
-                        </FormField>
-                    </Box>
+                <Box margin={-2}  display="flex" flexWrap="wrap">
                     <Box border="thick" borderRadius="large" flex="1 1" margin={2} padding={3}>
                         <Heading size="small">Units</Heading>
                         <FormField label="Units table" description="Table containing the individual items which are bought/rented" marginY={2}>
@@ -400,18 +430,6 @@ function SettingsMenu(props) {
                                 table={unitsTable}
                             />
                         </FormField>
-                        <FormField label="Condition field" description="Field describing an unit's current condition" marginY={2}>
-                            <FieldPickerSynced
-                                globalConfigKey={unitsConditionFieldId}
-                                table={unitsTable}
-                            />
-                        </FormField>
-                        <FormField label="Purchase date field" description="Field detailing when an unit was purchased/added to the units" marginY={2}>
-                            <FieldPickerSynced
-                                globalConfigKey={unitsPurchaseDateFieldId}
-                                table={unitsTable}
-                            />
-                        </FormField>
                         <FormField label="Log link" description="Field linking to the log table" marginY={2}>
                             <FieldPickerSynced
                                 globalConfigKey={unitsLinkLogFieldId}
@@ -421,6 +439,41 @@ function SettingsMenu(props) {
                                 ]}
                             />
                         </FormField>
+                        <Heading borderTop="thick" paddingTop={2} textColor="light" size="xsmall" marginY={3}>Optional fields</Heading>
+                        <Box display="flex" marginY={2}>
+                            <SwitchSynced globalConfigKey={unitsTrackItems} label="Linked to a table of types/groups?" marginRight={2} />
+                            <FieldPickerSynced
+                                globalConfigKey={unitsLinkItemsFieldId}
+                                table={unitsTable}
+                                allowedTypes={[
+                                    FieldType.MULTIPLE_RECORD_LINKS
+                                ]}
+                                marginLeft={2}
+                            />
+                        </Box>
+                        <Box display="flex" marginY={2}>
+                            <SwitchSynced globalConfigKey={unitsTrackCondition} label="Track unit condition?" marginRight={2} />
+                            <FieldPickerSynced
+                                globalConfigKey={unitsConditionFieldId}
+                                table={unitsTable}
+                                allowedTypes={[
+                                    FieldType.SINGLE_SELECT
+                                ]}
+                                marginLeft={2}
+                            />
+                        </Box>
+                        <Box display="flex" marginY={2}>
+                            <SwitchSynced globalConfigKey={unitsTrackOriginDate} label="Track origin date?" marginRight={2} />
+                            <FieldPickerSynced
+                                globalConfigKey={unitsPurchaseDateFieldId}
+                                table={unitsTable}
+                                allowedTypes={[
+                                    FieldType.DATE,
+                                    FieldType.DATE_TIME
+                                ]}
+                                marginLeft={2}
+                            />
+                        </Box>
                     </Box>
                     <Box border="thick" borderRadius="large" flex="1 1" margin={2} padding={3}>
                         <Heading size="small">Log</Heading>
@@ -430,34 +483,49 @@ function SettingsMenu(props) {
                                 onChange={resetLogFields}
                             />
                         </FormField>
-                        <FormField label="Unresolved view" description="A view which shows all 'open' records" marginY={2}>
+                        <FormField label="Checked out view" description="A view which shows all checked out records" marginY={2}>
                             <ViewPickerSynced 
                                 globalConfigKey={logViewId}
                                 table={logTable}
                             />
                         </FormField>
-                        <FormField label="Original condition field" description="Field describing the unit's condition when received" marginY={2}>
-                            <FieldPickerSynced
-                                globalConfigKey={logCheckOutConditionFieldId}
-                                table={logTable}
-                            />
-                        </FormField>
-                        <FormField label="Date out field" description="Field describing the date the unit was rented" marginY={2}>
+                        <FormField label="Check out date field" description="Field describing the date the unit was rented" marginY={2}>
                             <FieldPickerSynced
                                 globalConfigKey={logCheckOutDateFieldId}
                                 table={logTable}
+                                allowedTypes={[
+                                    FieldType.DATE,
+                                    FieldType.DATE_TIME
+                                ]}
                             />
                         </FormField>
-                        <FormField label="Returned condition field" description="Field describing the unit's condition when returned" marginY={2}>
-                            <FieldPickerSynced
-                                globalConfigKey={logCheckInConditionFieldId}
-                                table={logTable}
-                            />
-                        </FormField>
-                        <FormField label="Date in field" description="Field describing the date the unit was returned" marginY={2}>
+                        <FormField label="Check in date field" description="Field describing the date the unit was returned" marginY={2}>
                             <FieldPickerSynced
                                 globalConfigKey={logCheckInDateFieldId}
                                 table={logTable}
+                                allowedTypes={[
+                                    FieldType.DATE,
+                                    FieldType.DATE_TIME
+                                ]}
+                            />
+                        </FormField>
+                        <Heading borderTop="thick" paddingTop={2} textColor="light" size="xsmall" marginY={3}>Optional fields</Heading>
+                        <FormField label="Condition upon check out field" marginY={2}>
+                            <FieldPickerSynced
+                                globalConfigKey={logCheckOutConditionFieldId}
+                                table={logTable}
+                                allowedTypes={[
+                                    FieldType.SINGLE_SELECT
+                                ]}
+                            />
+                        </FormField>
+                        <FormField label="Condition upon check in field" marginY={2}>
+                            <FieldPickerSynced
+                                globalConfigKey={logCheckInConditionFieldId}
+                                table={logTable}
+                                allowedTypes={[
+                                    FieldType.SINGLE_SELECT
+                                ]}
                             />
                         </FormField>
                     </Box>
