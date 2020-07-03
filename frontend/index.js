@@ -30,7 +30,7 @@ import {settingsButton, cursor} from '@airtable/blocks';
 import { FieldType, ViewType } from '@airtable/blocks/models';
 import React, {useState} from 'react';
 
-function InventoryAssistantBlock() {
+function CheckOutBlock() {
     const base = useBase();
     const globalConfig = useGlobalConfig();
     
@@ -132,7 +132,7 @@ function InventoryAssistantBlock() {
     
     // Units Actions (variables and functions for use in the action buttons)
     const logRecordsLinkedToUnit = useRecords(record && mode == 1 ? record.selectLinkedRecordsFromCell(unitsLinkLogField) : null)
-    const checkedOutRecordssLinkedToUnit = logRecordsLinkedToUnit ? logRecordsLinkedToUnit.filter(x => checkedOutRecords.map(y => y.id).includes(x.id)) : null
+    const checkedOutRecordsLinkedToUnit = logRecordsLinkedToUnit ? logRecordsLinkedToUnit.filter(x => checkedOutRecords.map(y => y.id).includes(x.id)) : null
     const recordIsAvailable = mode == 1 && availableUnits && availableUnits.map(y => y.id).includes(record.id) ? true : false
     const hasHistory = logRecordsLinkedToUnit != null && logRecordsLinkedToUnit.length ? true : false
     
@@ -154,7 +154,7 @@ function InventoryAssistantBlock() {
     
     // Log Actions (variables and functions for use in the action buttons)
     const conditionsChoices = sharedConditions ? sharedConditions.map(x => {return ({value: x, label: x})}) : []
-    const recordIsResolved = mode == 2 && checkedOutRecords.map(y => y.id).includes(record.id) ? false : true
+    const recordIsCheckedIn = mode == 2 && checkedOutRecords.map(y => y.id).includes(record.id) ? false : true
     const unitsRecordsLinkedToLog = useRecords(record && mode == 2 ? record.selectLinkedRecordsFromCell(logLinkUnitsFieldId) : null)
     
     
@@ -200,7 +200,7 @@ function InventoryAssistantBlock() {
     const [newCondition, setNewCondition] = useState(null);
     
     async function checkInUnit() {
-        const logCheckInInput = mode == 2 ? record : checkedOutRecordssLinkedToUnit[0]
+        const logCheckInInput = mode == 2 ? record : checkedOutRecordsLinkedToUnit[0]
         const fieldsAndValues = {
             [logCheckInDateFieldId]: today,
             ...optTrackCondition && {[logCheckInConditionFieldId]: {name: newCondition}}
@@ -298,8 +298,8 @@ function InventoryAssistantBlock() {
                                 {mode == 2 && (
                                     <React.Fragment>
                                         <ActionButton
-                                            disabledCondition={!checkCanUpdateLog.hasPermission || recordIsResolved}
-                                            tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Record is already resolved"}
+                                            disabledCondition={!checkCanUpdateLog.hasPermission || recordIsCheckedIn}
+                                            tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Record is already checked in"}
                                             buttonIcon="checkboxChecked"
                                             buttonAction={optTrackCondition ? () => setIsDialogOpen(true) : checkInUnit}
                                             buttonText="Check in"
@@ -560,4 +560,4 @@ function BlockContainer({children}) {
     )
 }
 
-initializeBlock(() => <InventoryAssistantBlock />);
+initializeBlock(() => <CheckOutBlock />);
