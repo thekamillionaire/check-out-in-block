@@ -94,9 +94,9 @@ function InventoryAssistantBlock() {
     const checkedOutRecords = useRecords(logTable ? logTable.getViewByIdIfExists(logViewId) : null)
     const logLinkUnitsFieldId = unitsLinkLogField ? unitsLinkLogField.options.inverseLinkFieldId : null
     
-    const logCheckOutConditionField = logTable ? logTable.getFieldByIdIfExists(logCheckOutConditionFieldId) : null
+    const logCheckOutConditionField = logTable && logCheckOutConditionFieldId ? logTable.getFieldByIdIfExists(logCheckOutConditionFieldId) : null
     const logCheckOutConditions = logCheckOutConditionField ? logCheckOutConditionField.options.choices.map(x => x.name) : null
-    const logCheckInConditionField = logTable ? logTable.getFieldByIdIfExists(logCheckInConditionFieldId) : null
+    const logCheckInConditionField = logTable && logCheckInConditionFieldId ? logTable.getFieldByIdIfExists(logCheckInConditionFieldId) : null
     const logCheckInConditions = logCheckInConditionField ? logCheckInConditionField.options.choices.map(x => x.name) : null
     const logConditions = logCheckInConditions && logCheckOutConditions ? logCheckOutConditions.filter(x => logCheckInConditions.includes(x)) : null
     // Return the single select options found in all three conditions fields, prevents errors thrown if trying to copy an incompatable option from another field
@@ -116,42 +116,47 @@ function InventoryAssistantBlock() {
     const record = useRecordById(table, recordId)
     
     // The "mode" determines what action buttons are shown, and the variables used in the async functions
-    const modes = [itemsTableId, unitsTableId, logTableId]
+    const modes = [optTrackItems ? itemsTableId : null, unitsTableId, logTableId]
     const mode = modes.indexOf(tableId)
     
     // Items Actions (variables and functions for use in the action buttons)
     const unitsRecordsLinkedToItem = useRecords(record && mode == 0 ? record.selectLinkedRecordsFromCell(itemsLinkUnitsField) : null)
     // Returns records which are available (determined by presence in a view), and which have a Condition cell value that can be used in the other two condition fields
     const availableLinkedUnits = unitsRecordsLinkedToItem ? 
-          unitsRecordsLinkedToItem.filter(x => availableUnits.map(y => y.id).includes(x.id) && sharedConditions.includes(x.getCellValue(unitsConditionFieldId).name)) : null
+          unitsRecordsLinkedToItem.filter(x => availableUnits.map(y => y.id).includes(x.id) && (!optTrackCondition || sharedConditions && sharedConditions.includes(x.getCellValue(unitsConditionFieldId).name))) : null
     const anyAvailable = availableLinkedUnits != null && availableLinkedUnits.length ? true : false
-    const bestAvailable = availableLinkedUnits ? 
-          availableLinkedUnits.sort((a, b) => (sharedConditions.indexOf(a.getCellValue(unitsConditionFieldId).name) > sharedConditions.indexOf(b.getCellValue(unitsConditionFieldId).name)) ? 1 : -1)[0] : null
+    const bestAvailable = availableLinkedUnits
+        ? availableLinkedUnits.sort((a, b) => (
+            optTrackCondition && unitsConditionFieldId && sharedConditions.indexOf(a.getCellValue(unitsConditionFieldId).name) > sharedConditions.indexOf(b.getCellValue(unitsConditionFieldId).name)
+        ) ? 1 : -1)[0] : null;
     
     // Units Actions (variables and functions for use in the action buttons)
     const logRecordsLinkedToUnit = useRecords(record && mode == 1 ? record.selectLinkedRecordsFromCell(unitsLinkLogField) : null)
     const checkedOutRecordssLinkedToUnit = logRecordsLinkedToUnit ? logRecordsLinkedToUnit.filter(x => checkedOutRecords.map(y => y.id).includes(x.id)) : null
-    const recordIsAvailable = mode == 1 && availableUnits.map(y => y.id).includes(record.id) ? true : false
+    const recordIsAvailable = mode == 1 && availableUnits && availableUnits.map(y => y.id).includes(record.id) ? true : false
     const hasHistory = logRecordsLinkedToUnit != null && logRecordsLinkedToUnit.length ? true : false
     
     const checkCanCreateUnit = unitsTable ? unitsTable.checkPermissionsForCreateRecord() : null
     const checkCanUpdateUnit = unitsTable ? unitsTable.checkPermissionsForUpdateRecord() : null
     
     async function createNewUnit() {
-        const newRecordId = await unitsTable.createRecordAsync({
+        const fieldsAndValues = {
             [unitsLinkItemsFieldId]: [{id: record.id}],
-            [unitsConditionFieldId]: {name: bestCondition},
-            [unitsOriginDateFieldId]: today
-        })
+            ...optTrackCondition && {[unitsConditionFieldId]: {name: bestCondition}},
+            ...optTrackOriginDate && {[unitsOriginDateFieldId]: today}
+        }
+        
+        const newRecordId = await unitsTable.createRecordAsync(fieldsAndValues)
         const query = await unitsTable.selectRecordsAsync()
         expandRecord(query.getRecordById(newRecordId))
         query.unloadData()
     }
     
     // Log Actions (variables and functions for use in the action buttons)
-    const conditionsChoices = sharedConditions ? sharedConditions.map(x => {return ({value: x, label: x})}) : null
+    const conditionsChoices = sharedConditions ? sharedConditions.map(x => {return ({value: x, label: x})}) : []
     const recordIsResolved = mode == 2 && checkedOutRecords.map(y => y.id).includes(record.id) ? false : true
     const unitsRecordsLinkedToLog = useRecords(record && mode == 2 ? record.selectLinkedRecordsFromCell(logLinkUnitsFieldId) : null)
+    
     
     const checkCanCreateLog = logTable ? logTable.checkPermissionsForCreateRecord() : null
     
@@ -161,11 +166,13 @@ function InventoryAssistantBlock() {
     
     async function checkOutUnitAuto() {
         const logCheckOutInput = mode == 0 ? bestAvailable : record
-        const newRecordId = await logTable.createRecordAsync({
+        const fieldsAndValues = {
             [logLinkUnitsFieldId]: [{id: logCheckOutInput.id}],
             [logCheckOutDateFieldId]: today,
-            [logCheckOutConditionFieldId]: {name: logCheckOutInput.getCellValue(unitsConditionFieldId).name}
-        })
+            ...optTrackCondition && {[logCheckOutConditionFieldId]: {name: logCheckOutInput.getCellValue(unitsConditionFieldId).name}},
+        }
+        
+        const newRecordId = await logTable.createRecordAsync(fieldsAndValues)
         const query = await logTable.selectRecordsAsync()
         expandRecord(query.getRecordById(newRecordId))
         query.unloadData()
@@ -173,12 +180,14 @@ function InventoryAssistantBlock() {
 
     async function checkOutUnitSelect() {
         const logCheckOutInput = await expandRecordPickerAsync(availableLinkedUnits)
+        
         if (logCheckOutInput) {
-            const newRecordId = await logTable.createRecordAsync({
+            const fieldsAndValues = {
                 [logLinkUnitsFieldId]: [{id: logCheckOutInput.id}],
                 [logCheckOutDateFieldId]: today,
-                [logCheckOutConditionFieldId]: {name: logCheckOutInput.getCellValue(unitsConditionFieldId).name}
-            })
+                ...optTrackCondition && {[logCheckOutConditionFieldId]: {name: logCheckOutInput.getCellValue(unitsConditionFieldId).name}}
+            }
+            const newRecordId = await logTable.createRecordAsync(fieldsAndValues)
             const query = await logTable.selectRecordsAsync()
             expandRecord(query.getRecordById(newRecordId))
             query.unloadData()
@@ -192,15 +201,22 @@ function InventoryAssistantBlock() {
     
     async function checkInUnit() {
         const logCheckInInput = mode == 2 ? record : checkedOutRecordssLinkedToUnit[0]
-        await logTable.updateRecordAsync(logCheckInInput, {
+        const fieldsAndValues = {
             [logCheckInDateFieldId]: today,
-            [logCheckInConditionFieldId]: {name: newCondition},
-        })
+            ...optTrackCondition && {[logCheckInConditionFieldId]: {name: newCondition}}
+        }
+        
+        await logTable.updateRecordAsync(logCheckInInput, fieldsAndValues)
+        
         const unitInput = mode == 2 ? unitsRecordsLinkedToLog[0] : record
-        await unitsTable.updateRecordAsync(unitInput, {
-            [unitsConditionFieldId]: {name: newCondition}
-        })
-        setNewCondition(null)
+        
+        if(optTrackCondition && unitInput) {
+            
+            await unitsTable.updateRecordAsync(unitInput, {
+                [unitsConditionFieldId]: {name: newCondition}
+            })
+            setNewCondition(null)
+        }
         setIsDialogOpen(false)
     }
     
@@ -210,12 +226,12 @@ function InventoryAssistantBlock() {
         <React.Fragment>
             <BlockContainer>
                 <Box padding={4} flex="1 1" overflow="hidden">
-                    {(!initialSetupDone || !recordActionData) && (
+                    {(!initialSetupDone || !recordActionData || recordActionData && !modes.includes(tableId)) && (
                         <Box padding={6} backgroundColor="lightGray1" border="thick" borderRadius="large">
                             <Heading margin={0} variant="caps" textAlign="center">{emptyViewportText}</Heading>
                         </Box>
                     )}
-                    {initialSetupDone && recordActionData && (
+                    {initialSetupDone && recordActionData && modes.includes(tableId) &&  (
                         <React.Fragment>
                             <Box display="flex" flex="1 1" flexWrap="wrap" width="100%" justifyContent="space-between" paddingBottom={3} borderBottom="thick">
                                 <Box marginX={4} style={truncateText}>
@@ -274,7 +290,7 @@ function InventoryAssistantBlock() {
                                             disabledCondition={!checkCanUpdateLog.hasPermission || recordIsAvailable}
                                             tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Unit isn't checked out"}
                                             buttonIcon="checkboxChecked"
-                                            buttonAction={() => setIsDialogOpen(true)}
+                                            buttonAction={optTrackCondition ? () => setIsDialogOpen(true) : checkInUnit}
                                             buttonText="Check in"
                                         />
                                     </React.Fragment>
@@ -285,7 +301,7 @@ function InventoryAssistantBlock() {
                                             disabledCondition={!checkCanUpdateLog.hasPermission || recordIsResolved}
                                             tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Record is already resolved"}
                                             buttonIcon="checkboxChecked"
-                                            buttonAction={() => setIsDialogOpen(true)}
+                                            buttonAction={optTrackCondition ? () => setIsDialogOpen(true) : checkInUnit}
                                             buttonText="Check in"
                                         />
                                     </React.Fragment>
@@ -293,10 +309,14 @@ function InventoryAssistantBlock() {
                                 {isDialogOpen && (
                                     <Dialog onClose={() => setIsDialogOpen(false)} width="320px">
                                         <Dialog.CloseButton />
-                                        <FormField label="What condition is the unit in?" marginBottom={2}>
-                                            <Select options={conditionsChoices} value={newCondition} onChange={newValue => setNewCondition(newValue)} />
-                                        </FormField>
-                                        <Button variant="primary" icon="check" disabled={!newCondition} onClick={checkInUnit}>Done</Button>
+                                        {optTrackCondition && (
+                                            <React.Fragment>
+                                                <FormField label="What condition is the unit in?" marginBottom={2}>
+                                                    <Select options={conditionsChoices} value={newCondition} onChange={newValue => setNewCondition(newValue)} />
+                                                </FormField>
+                                            </React.Fragment>
+                                         )}
+                                        <Button variant="primary" icon="check" disabled={optTrackCondition && !newCondition} onClick={checkInUnit}>Done</Button>
                                     </Dialog>
                                 )}
                             </Box>
@@ -423,30 +443,30 @@ function SettingsMenu(props) {
                     <Box borderTop="thick" paddingTop={3}>
                         <SwitchSynced globalConfigKey={optTrackItemsKey} label="Linked to a table of unit types?" marginBottom={2} />
                         {optTrackItems && (
-                            <FormField label="Items table linked record field">
-                                <FieldPickerSynced
-                                    globalConfigKey={unitsLinkItemsFieldId}
-                                    table={unitsTable}
-                                    allowedTypes={[
-                                        FieldType.MULTIPLE_RECORD_LINKS
-                                    ]}
-                                />
-                            </FormField>
-                        )}
-                    </Box>
-                    <Box borderTop="thick" paddingTop={3}>
-                        <SwitchSynced globalConfigKey={optTrackOriginDateKey} label="Track origin date?" marginBottom={2} />
-                        {optTrackOriginDate && (
-                            <FormField label="Unit origin date (Units table)">
-                                <FieldPickerSynced
-                                    globalConfigKey={unitsOriginDateFieldId}
-                                    table={unitsTable}
-                                    allowedTypes={[
-                                        FieldType.DATE,
-                                        FieldType.DATE_TIME
-                                    ]}
-                                />
-                            </FormField>
+                            <React.Fragment>
+                                <FormField label="Items table linked record field">
+                                    <FieldPickerSynced
+                                        globalConfigKey={unitsLinkItemsFieldId}
+                                        table={unitsTable}
+                                        allowedTypes={[
+                                            FieldType.MULTIPLE_RECORD_LINKS
+                                        ]}
+                                    />
+                                </FormField>
+                                <SwitchSynced globalConfigKey={optTrackOriginDateKey} label="Pre-fill unit origin date?" marginBottom={2} />
+                                {optTrackOriginDate && (
+                                    <FormField label="Unit origin date (Units table)">
+                                        <FieldPickerSynced
+                                            globalConfigKey={unitsOriginDateFieldId}
+                                            table={unitsTable}
+                                            allowedTypes={[
+                                                FieldType.DATE,
+                                                FieldType.DATE_TIME
+                                            ]}
+                                        />
+                                    </FormField>
+                                )}
+                            </React.Fragment>
                         )}
                     </Box>
                     <Box borderTop="thick" paddingTop={3}>
