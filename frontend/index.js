@@ -38,13 +38,12 @@ function InventoryAssistantBlock() {
         UNITS_TABLE_ID: "unitsTableId",
         UNITS_VIEW_ID: "unitsViewId",
         UNITS_CONDITION_FIELD_ID: "unitsConditionFieldId",
-        UNITS_PURCHASE_DATE_FIELD_ID: "unitsPurchaseDateFieldId",
+        UNITS_ORIGIN_DATE_FIELD_ID: "unitsOriginDateFieldId",
         UNITS_LINK_ITEMS_FIELD_ID: "unitsLinkItemsFieldId",
         UNITS_LINK_LOG_FIELD_ID: "unitsLinkLogFieldId",
-        UNITS_TRACK_ITEMS: "unitsTrackItems",
-        UNITS_TRACK_CONDITION: "unitsTrackCondition",
-        UNITS_TRACK_ORIGIN_DATE: "unitsTrackOriginDate",
-        LOG_TABLE_ID: "logTableId",
+        OPT_TRACK_ITEMS: "optTrackItems",
+        OPT_TRACK_CONDITION: "optTrackCondition",
+        OPT_TRACK_ORIGIN_DATE: "optTrackOriginDate",
         LOG_VIEW_ID: "logViewId",
         LOG_OUT_CONDITION_FIELD_ID: "logCheckOutConditionFieldId",
         LOG_OUT_DATE_FIELD_ID: "logCheckOutDateFieldId",
@@ -55,14 +54,16 @@ function InventoryAssistantBlock() {
     const unitsTableId = globalConfig.get(GlobalConfigKeys.UNITS_TABLE_ID)
     const unitsViewId = globalConfig.get(GlobalConfigKeys.UNITS_VIEW_ID)
     const unitsConditionFieldId = globalConfig.get(GlobalConfigKeys.UNITS_CONDITION_FIELD_ID)
-    const unitsPurchaseDateFieldId = globalConfig.get(GlobalConfigKeys.UNITS_PURCHASE_DATE_FIELD_ID)
+    const unitsOriginDateFieldId = globalConfig.get(GlobalConfigKeys.UNITS_ORIGIN_DATE_FIELD_ID)
     const unitsLinkItemsFieldId = globalConfig.get(GlobalConfigKeys.UNITS_LINK_ITEMS_FIELD_ID)
     const unitsLinkLogFieldId = globalConfig.get(GlobalConfigKeys.UNITS_LINK_LOG_FIELD_ID)
-    const unitsTrackItems = globalConfig.get(GlobalConfigKeys.UNITS_TRACK_ITEMS)
-    const unitsTrackCondition = globalConfig.get(GlobalConfigKeys.UNITS_TRACK_CONDITION)
-    const unitsTrackOriginDate = globalConfig.get(GlobalConfigKeys.UNITS_TRACK_ORIGIN_DATE)
+    const optTrackItems = globalConfig.get(GlobalConfigKeys.OPT_TRACK_ITEMS)
+    const optTrackCondition = globalConfig.get(GlobalConfigKeys.OPT_TRACK_CONDITION)
+    const optTrackOriginDate = globalConfig.get(GlobalConfigKeys.OPT_TRACK_ORIGIN_DATE)
     
-    const logTableId = globalConfig.get(GlobalConfigKeys.LOG_TABLE_ID)
+    const unitsTable = base.getTableByIdIfExists(unitsTableId)
+    const unitsLinkLogField = unitsTable ? unitsTable.getFieldByIdIfExists(unitsLinkLogFieldId) : null
+    const logTableId = unitsLinkLogField ? unitsLinkLogField.options.linkedTableId : null
     const logViewId = globalConfig.get(GlobalConfigKeys.LOG_VIEW_ID)
     const logCheckOutConditionFieldId = globalConfig.get(GlobalConfigKeys.LOG_OUT_CONDITION_FIELD_ID)
     const logCheckOutDateFieldId = globalConfig.get(GlobalConfigKeys.LOG_OUT_DATE_FIELD_ID)
@@ -70,7 +71,7 @@ function InventoryAssistantBlock() {
     const logCheckInDateFieldId = globalConfig.get(GlobalConfigKeys.LOG_IN_DATE_FIELD_ID)
     
     // Check if all settings options have values
-    const initialSetupDone = unitsTableId && unitsViewId && unitsConditionFieldId && unitsPurchaseDateFieldId && unitsLinkItemsFieldId && unitsLinkLogFieldId && logTableId && logViewId && logCheckOutConditionFieldId && logCheckOutDateFieldId && logCheckInConditionFieldId && logCheckInDateFieldId ? true : false
+    const initialSetupDone = (unitsTableId && unitsViewId && unitsLinkLogFieldId && logTableId && logViewId && logCheckOutDateFieldId && logCheckInDateFieldId) && (!optTrackCondition || unitsConditionFieldId && logCheckOutConditionFieldId && logCheckInConditionFieldId) && (!optTrackOriginDate || unitsOriginDateFieldId) && (!optTrackItems || unitsLinkItemsFieldId) ? true : false
     
     // Enable the settings button
     const [isShowingSettings, setIsShowingSettings] = useState(!initialSetupDone);
@@ -79,12 +80,10 @@ function InventoryAssistantBlock() {
     });
     
     // Get tables, view ids, and field ids
-    const unitsTable = base.getTableByIdIfExists(unitsTableId)
     const availableUnits = useRecords(unitsTable ? unitsTable.getViewByIdIfExists(unitsViewId) : null)
     const unitsConditionsField = unitsTable ? unitsTable.getFieldByIdIfExists(unitsConditionFieldId) : null
     const unitsConditions = unitsConditionsField ? unitsConditionsField.options.choices.map(x => x.name) : null
     const unitsLinkItemsField = unitsTable ? unitsTable.getFieldByIdIfExists(unitsLinkItemsFieldId) : null
-    const unitsLinkLogField = unitsTable ? unitsTable.getFieldByIdIfExists(unitsLinkLogFieldId) : null
     
     const itemsTableId = unitsLinkItemsField ? unitsLinkItemsField.options.linkedTableId : null
     const itemsTable = base.getTableByIdIfExists(itemsTableId)
@@ -105,6 +104,7 @@ function InventoryAssistantBlock() {
     const bestCondition = sharedConditions ? sharedConditions[0] : null
     
     const today = new Date()
+    const truncateText= {overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}
     
     // Collect info from record button type press
     const recordActionData = useRecordActionData();
@@ -141,7 +141,7 @@ function InventoryAssistantBlock() {
         const newRecordId = await unitsTable.createRecordAsync({
             [unitsLinkItemsFieldId]: [{id: record.id}],
             [unitsConditionFieldId]: {name: bestCondition},
-            [unitsPurchaseDateFieldId]: today
+            [unitsOriginDateFieldId]: today
         })
         const query = await unitsTable.selectRecordsAsync()
         expandRecord(query.getRecordById(newRecordId))
@@ -204,11 +204,106 @@ function InventoryAssistantBlock() {
         setIsDialogOpen(false)
     }
     
-    // Display the settings module if setup is required
-    if (isShowingSettings) {
-        return (
-            <React.Fragment>
-                <BlockContainer>
+    const emptyViewportText = !initialSetupDone ? "Please complete all settings" : "Click an action button associated with this block"
+    
+    return (
+        <React.Fragment>
+            <BlockContainer>
+                <Box padding={4} flex="1 1" overflow="hidden">
+                    {(!initialSetupDone || !recordActionData) && (
+                        <Box padding={6} backgroundColor="lightGray1" border="thick" borderRadius="large">
+                            <Heading margin={0} variant="caps" textAlign="center">{emptyViewportText}</Heading>
+                        </Box>
+                    )}
+                    {initialSetupDone && recordActionData && (
+                        <React.Fragment>
+                            <Box display="flex" flex="1 1" flexWrap="wrap" width="100%" justifyContent="space-between" paddingBottom={3} borderBottom="thick">
+                                <Box marginX={4} style={truncateText}>
+                                    <Heading variant="caps" size="xsmall" textColor="light">Table</Heading>
+                                    <Heading size="small" style={truncateText}>{recordActionData && (table.name)}</Heading>
+                                </Box>
+                                <Box marginX={4} flex="1 1" style={truncateText}>
+                                    <Heading variant="caps" size="xsmall" textColor="light">Record</Heading>
+                                    <Heading size="small" style={truncateText}>{recordActionData && (record.name)}</Heading>
+                                </Box>
+                            </Box>
+                            <RecordCard record={record} marginY={4} marginX="auto" />
+                            <Box display="flex" flexWrap="wrap" justifyContent="center">
+                                {mode == 0 && (
+                                    <React.Fragment>
+                                        <ActionButton
+                                            disabledCondition={!checkCanCreateUnit.hasPermission}
+                                            tooltipContent={checkCanCreateUnit.reasonDisplayString}
+                                            buttonIcon="duplicate"
+                                            buttonAction={createNewUnit}
+                                            buttonText="Add new unit"
+                                        />
+                                        <ActionButton
+                                            disabledCondition={!checkCanCreateLog.hasPermission || !anyAvailable}
+                                            tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "No available units"}
+                                            buttonIcon="checkboxUnchecked"
+                                            buttonAction={checkOutUnitAuto}
+                                            buttonText="Check out (auto)"
+                                        />
+                                        <ActionButton
+                                            disabledCondition={!checkCanCreateLog.hasPermission || !anyAvailable}
+                                            tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "No available units"}
+                                            buttonIcon="checkboxUnchecked"
+                                            buttonAction={checkOutUnitSelect}
+                                            buttonText="Check out (select)"
+                                        />
+                                    </React.Fragment>
+                                )}
+                                {mode == 1 && (
+                                    <React.Fragment>
+                                        <ActionButton
+                                            disabledCondition={!hasHistory}
+                                            tooltipContent="No log records"
+                                            buttonIcon="expand1"
+                                            buttonAction={viewHistory}
+                                            buttonText="View history"
+                                        />
+                                        <ActionButton
+                                            disabledCondition={!checkCanCreateLog.hasPermission || !recordIsAvailable}
+                                            tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "Unit is unavailable"}
+                                            buttonIcon="checkboxUnchecked"
+                                            buttonAction={checkOutUnitAuto}
+                                            buttonText="Check out"
+                                        />
+                                        <ActionButton
+                                            disabledCondition={!checkCanUpdateLog.hasPermission || recordIsAvailable}
+                                            tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Unit isn't checked out"}
+                                            buttonIcon="checkboxChecked"
+                                            buttonAction={() => setIsDialogOpen(true)}
+                                            buttonText="Check in"
+                                        />
+                                    </React.Fragment>
+                                )}
+                                {mode == 2 && (
+                                    <React.Fragment>
+                                        <ActionButton
+                                            disabledCondition={!checkCanUpdateLog.hasPermission || recordIsResolved}
+                                            tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Record is already resolved"}
+                                            buttonIcon="checkboxChecked"
+                                            buttonAction={() => setIsDialogOpen(true)}
+                                            buttonText="Check in"
+                                        />
+                                    </React.Fragment>
+                                )}
+                                {isDialogOpen && (
+                                    <Dialog onClose={() => setIsDialogOpen(false)} width="320px">
+                                        <Dialog.CloseButton />
+                                        <FormField label="What condition is the unit in?" marginBottom={2}>
+                                            <Select options={conditionsChoices} value={newCondition} onChange={newValue => setNewCondition(newValue)} />
+                                        </FormField>
+                                        <Button variant="primary" icon="check" disabled={!newCondition} onClick={checkInUnit}>Done</Button>
+                                    </Dialog>
+                                )}
+                            </Box>
+                        </React.Fragment>
+                    )}
+                </Box>
+                {isShowingSettings && (
                     <SettingsMenu
                         globalConfig={globalConfig}
                         GlobalConfigKeys={GlobalConfigKeys}
@@ -216,113 +311,10 @@ function InventoryAssistantBlock() {
                         initialSetupDone={initialSetupDone}
                         onDoneClick={() => setIsShowingSettings(false)}
                     />
-                </BlockContainer>
-            </React.Fragment>
-        )
-    } else if(recordActionData && mode == 0) {
-        return (
-            <React.Fragment>
-                <AssistantContent table={table} record={record}>
-                    <ActionButton
-                        disabledCondition={!checkCanCreateUnit.hasPermission}
-                        tooltipContent={checkCanCreateUnit.reasonDisplayString}
-                        buttonIcon="duplicate"
-                        buttonAction={createNewUnit}
-                        buttonText="Add new unit"
-                    />
-                    <ActionButton
-                        disabledCondition={!checkCanCreateLog.hasPermission || !anyAvailable}
-                        tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "No available units"}
-                        buttonIcon="checkboxUnchecked"
-                        buttonAction={checkOutUnitAuto}
-                        buttonText="Check out (auto)"
-                    />
-                    <ActionButton
-                        disabledCondition={!checkCanCreateLog.hasPermission || !anyAvailable}
-                        tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "No available units"}
-                        buttonIcon="checkboxUnchecked"
-                        buttonAction={checkOutUnitSelect}
-                        buttonText="Check out (select)"
-                    />
-                </AssistantContent>
-            </React.Fragment>
-        )
-    } else if(recordActionData && mode == 1) {
-        return (
-            <React.Fragment>
-                <AssistantContent table={table} record={record}>
-                    <ActionButton
-                        disabledCondition={!hasHistory}
-                        tooltipContent="No log records"
-                        buttonIcon="expand1"
-                        buttonAction={viewHistory}
-                        buttonText="View history"
-                    />
-                    <ActionButton
-                        disabledCondition={!checkCanCreateLog.hasPermission || !recordIsAvailable}
-                        tooltipContent={!checkCanCreateLog.hasPermission ? checkCanCreateLog.reasonDisplayString : "Unit is unavailable"}
-                        buttonIcon="checkboxUnchecked"
-                        buttonAction={checkOutUnitAuto}
-                        buttonText="Check out"
-                    />
-                    <ActionButton
-                        disabledCondition={!checkCanUpdateLog.hasPermission || recordIsAvailable}
-                        tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Unit isn't checked out"}
-                        buttonIcon="checkboxChecked"
-                        buttonAction={() => setIsDialogOpen(true)}
-                        buttonText="Check in"
-                    />
-                    
-                    {isDialogOpen && (
-                        <Dialog onClose={() => setIsDialogOpen(false)} width="320px">
-                            <Dialog.CloseButton />
-                            <FormField label="What condition is the unit in?" marginBottom={2}>
-                                <Select options={conditionsChoices} value={newCondition} onChange={newValue => setNewCondition(newValue)} />
-                            </FormField>
-                            <Button variant="primary" icon="check" onClick={checkInUnit}>Done</Button>
-                        </Dialog>
-                    )}
-                </AssistantContent>
-            </React.Fragment>
-        )
-    } else if(recordActionData && mode == 2) {
-        return (
-            <React.Fragment>
-                <AssistantContent table={table} record={record}>
-                    <ActionButton
-                        disabledCondition={!checkCanUpdateLog.hasPermission || recordIsResolved}
-                        tooltipContent={!checkCanUpdateLog.hasPermission ? checkCanUpdateLog.reasonDisplayString : "Record is already resolved"}
-                        buttonIcon="checkboxChecked"
-                        buttonAction={() => setIsDialogOpen(true)}
-                        buttonText="Check in"
-                    />
-                    {isDialogOpen && (
-                        <Dialog onClose={() => setIsDialogOpen(false)} width="320px">
-                            <Dialog.CloseButton />
-                            <FormField label="What condition is the unit in?" marginBottom={2}>
-                                <Select options={conditionsChoices} value={newCondition} onChange={newValue => setNewCondition(newValue)} />
-                            </FormField>
-                            <Button variant="primary" icon="check" onClick={checkInUnit}>Done</Button>
-                        </Dialog>
-                    )}
-                </AssistantContent>
-            </React.Fragment>
-        )
-    } else {
-        return (
-            <React.Fragment>
-                <BlockContainer>
-                    <Box padding={3} backgroundColor="lightGray1" border="thick" borderRadius="large" maxWidth="500px">
-                        <Box display="flex" alignItems="center" marginBottom={3}>                    
-                            <Icon name="warning" fillColor="orange" marginRight={3} />
-                            <Heading margin={0} flex="1 1" variant="caps">Click an action button</Heading>
-                        </Box>
-                        <Text size="large" textColor="light">Use an action button in the base to run this block.</Text>
-                    </Box>
-                </BlockContainer>
-            </React.Fragment>
-        )
-    }
+                )}
+            </BlockContainer>
+        </React.Fragment>
+    )
 }
 
 function ActionButton(props) {
@@ -341,30 +333,6 @@ function ActionButton(props) {
     )
 }
 
-function AssistantContent({children, table, record}) {
-    const truncateText= {overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}
-    return (
-        <React.Fragment>
-            <BlockContainer>
-                <Box display="flex" flex="1 1" flexWrap="wrap" width="100%" justifyContent="space-between" paddingBottom={3} borderBottom="thick">
-                    <Box marginX={4} style={truncateText}>
-                        <Heading variant="caps" size="xsmall" textColor="light">Table</Heading>
-                        <Heading size="small" style={truncateText}>{table.name}</Heading>
-                    </Box>
-                    <Box marginX={4} flex="1 1" style={truncateText}>
-                        <Heading variant="caps" size="xsmall" textColor="light">Record</Heading>
-                        <Heading size="small" style={truncateText}>{record.name}</Heading>
-                    </Box>
-                </Box>
-                <RecordCard record={record} marginY={4} />
-                <Box display="flex" flexWrap="wrap" justifyContent="center">
-                    {children}
-                </Box>
-            </BlockContainer>
-        </React.Fragment>
-    )
-}
-
 function SettingsMenu(props) {
     const base = props.base
     
@@ -372,38 +340,50 @@ function SettingsMenu(props) {
     const unitsTable = base.getTableByIdIfExists(props.globalConfig.get(unitsTableId))
     const unitsViewId = props.GlobalConfigKeys.UNITS_VIEW_ID
     const unitsConditionFieldId = props.GlobalConfigKeys.UNITS_CONDITION_FIELD_ID
-    const unitsPurchaseDateFieldId = props.GlobalConfigKeys.UNITS_PURCHASE_DATE_FIELD_ID
+    const unitsOriginDateFieldId = props.GlobalConfigKeys.UNITS_ORIGIN_DATE_FIELD_ID
     const unitsLinkItemsFieldId = props.GlobalConfigKeys.UNITS_LINK_ITEMS_FIELD_ID
     const unitsLinkLogFieldId = props.GlobalConfigKeys.UNITS_LINK_LOG_FIELD_ID
-    const unitsTrackItems = props.GlobalConfigKeys.UNITS_TRACK_ITEMS
-    const unitsTrackCondition = props.GlobalConfigKeys.UNITS_TRACK_CONDITION
-    const unitsTrackOriginDate = props.GlobalConfigKeys.UNITS_TRACK_ORIGIN_DATE
+    const unitsLinkLogField = unitsTable ? unitsTable.getFieldByIdIfExists(props.globalConfig.get(unitsLinkLogFieldId)) : null
     
-    const logTableId = props.GlobalConfigKeys.LOG_TABLE_ID
-    const logTable = base.getTableByIdIfExists(props.globalConfig.get(logTableId))
+    const logTableId = unitsLinkLogField ? unitsLinkLogField.options.linkedTableId : null
+    const logTable = base.getTableByIdIfExists(logTableId)
     const logViewId = props.GlobalConfigKeys.LOG_VIEW_ID
     const logCheckOutConditionFieldId = props.GlobalConfigKeys.LOG_OUT_CONDITION_FIELD_ID
     const logCheckOutDateFieldId = props.GlobalConfigKeys.LOG_OUT_DATE_FIELD_ID
     const logCheckInConditionFieldId = props.GlobalConfigKeys.LOG_IN_CONDITION_FIELD_ID
     const logCheckInDateFieldId = props.GlobalConfigKeys.LOG_IN_DATE_FIELD_ID
     
+    const optTrackItemsKey = props.GlobalConfigKeys.OPT_TRACK_ITEMS
+    const optTrackItems = props.globalConfig.get(optTrackItemsKey)
+    
+    const optTrackConditionKey = props.GlobalConfigKeys.OPT_TRACK_CONDITION
+    const optTrackCondition = props.globalConfig.get(optTrackConditionKey)
+    
+    const optTrackOriginDateKey = props.GlobalConfigKeys.OPT_TRACK_ORIGIN_DATE
+    const optTrackOriginDate = props.globalConfig.get(optTrackOriginDateKey)
+    
     const resetUnitsFields = () => {
         const paths = [
             {path: [unitsViewId], value: null},
             {path: [unitsConditionFieldId], value: null},
-            {path: [unitsPurchaseDateFieldId], value: null},
+            {path: [unitsOriginDateFieldId], value: null},
             {path: [unitsLinkItemsFieldId], value: null},
             {path: [unitsLinkLogFieldId], value: null},
-            {path: [unitsTrackItems], value: null},
-            {path: [unitsTrackCondition], value: null},
-            {path: [unitsTrackOriginDate], value: null}
+            {path: [optTrackItemsKey], value: null},
+            {path: [optTrackConditionKey], value: null},
+            {path: [optTrackOriginDateKey], value: null},
+            {path: [logViewId], value: null},
+            {path: [logCheckOutConditionFieldId], value: null},
+            {path: [logCheckOutDateFieldId], value: null},
+            {path: [logCheckInConditionFieldId], value: null},
+            {path: [logCheckInDateFieldId], value: null}
         ]
         props.globalConfig.setPathsAsync(paths);
     }
     const resetLogFields = () => {
         const paths = [
+            {path: [logViewId], value: null},
             {path: [logCheckOutConditionFieldId], value: null},
-            {path: [logCheckOutDateFieldId], value: null},
             {path: [logCheckOutDateFieldId], value: null},
             {path: [logCheckInConditionFieldId], value: null},
             {path: [logCheckInDateFieldId], value: null},
@@ -413,83 +393,104 @@ function SettingsMenu(props) {
     
     return(
         <React.Fragment>
-            <Heading marginBottom={4}>Inventory assistant settings</Heading>
-            <Box alignSelf="stretch">
-                <Box margin={-2}  display="flex" flexWrap="wrap">
-                    <Box border="thick" borderRadius="large" flex="1 1" margin={2} padding={3}>
-                        <Heading size="small">Units</Heading>
-                        <FormField label="Units table" description="Table containing the individual items which are bought/rented" marginY={2}>
+            <Box flex="none" display="flex" flexDirection="column" width="300px" height="100vh" backgroundColor="lightGray1">
+                <Box flex="auto" display="flex" flexDirection="column" minHeight="0" padding={3} overflowY="auto">
+                    <Heading> Settings</Heading>
+                    <Box borderTop="thick" paddingTop={3}>
+                        <FormField label="Units table">
                             <TablePickerSynced 
                                 globalConfigKey={unitsTableId}
                                 onChange={resetUnitsFields}
                             />
                         </FormField>
-                        <FormField label="Available units view" description="A view which shows all currently available units" marginY={2}>
+                        <FormField label="Available units view (Units table)">
                             <ViewPickerSynced 
                                 globalConfigKey={unitsViewId}
                                 table={unitsTable}
                             />
                         </FormField>
-                        <FormField label="Log link" description="Field linking to the log table" marginY={2}>
+                        <FormField label="Log table linked record field (Units table)">
                             <FieldPickerSynced
                                 globalConfigKey={unitsLinkLogFieldId}
                                 table={unitsTable}
                                 allowedTypes={[
                                     FieldType.MULTIPLE_RECORD_LINKS
                                 ]}
-                            />
-                        </FormField>
-                        <Heading borderTop="thick" paddingTop={2} textColor="light" size="xsmall" marginY={3}>Optional fields</Heading>
-                        <Box display="flex" marginY={2}>
-                            <SwitchSynced globalConfigKey={unitsTrackItems} label="Linked to a table of types/groups?" marginRight={2} />
-                            <FieldPickerSynced
-                                globalConfigKey={unitsLinkItemsFieldId}
-                                table={unitsTable}
-                                allowedTypes={[
-                                    FieldType.MULTIPLE_RECORD_LINKS
-                                ]}
-                                marginLeft={2}
-                            />
-                        </Box>
-                        <Box display="flex" marginY={2}>
-                            <SwitchSynced globalConfigKey={unitsTrackCondition} label="Track unit condition?" marginRight={2} />
-                            <FieldPickerSynced
-                                globalConfigKey={unitsConditionFieldId}
-                                table={unitsTable}
-                                allowedTypes={[
-                                    FieldType.SINGLE_SELECT
-                                ]}
-                                marginLeft={2}
-                            />
-                        </Box>
-                        <Box display="flex" marginY={2}>
-                            <SwitchSynced globalConfigKey={unitsTrackOriginDate} label="Track origin date?" marginRight={2} />
-                            <FieldPickerSynced
-                                globalConfigKey={unitsPurchaseDateFieldId}
-                                table={unitsTable}
-                                allowedTypes={[
-                                    FieldType.DATE,
-                                    FieldType.DATE_TIME
-                                ]}
-                                marginLeft={2}
-                            />
-                        </Box>
-                    </Box>
-                    <Box border="thick" borderRadius="large" flex="1 1" margin={2} padding={3}>
-                        <Heading size="small">Log</Heading>
-                        <FormField label="Log table" description="Table containing the records detailing each units item's history" marginY={2}>
-                            <TablePickerSynced 
-                                globalConfigKey={logTableId}
                                 onChange={resetLogFields}
                             />
                         </FormField>
-                        <FormField label="Checked out view" description="A view which shows all checked out records" marginY={2}>
+                    </Box>
+                    <Box borderTop="thick" paddingTop={3}>
+                        <SwitchSynced globalConfigKey={optTrackItemsKey} label="Linked to a table of unit types?" marginBottom={2} />
+                        {optTrackItems && (
+                            <FormField label="Items table linked record field">
+                                <FieldPickerSynced
+                                    globalConfigKey={unitsLinkItemsFieldId}
+                                    table={unitsTable}
+                                    allowedTypes={[
+                                        FieldType.MULTIPLE_RECORD_LINKS
+                                    ]}
+                                />
+                            </FormField>
+                        )}
+                    </Box>
+                    <Box borderTop="thick" paddingTop={3}>
+                        <SwitchSynced globalConfigKey={optTrackOriginDateKey} label="Track origin date?" marginBottom={2} />
+                        {optTrackOriginDate && (
+                            <FormField label="Unit origin date (Units table)">
+                                <FieldPickerSynced
+                                    globalConfigKey={unitsOriginDateFieldId}
+                                    table={unitsTable}
+                                    allowedTypes={[
+                                        FieldType.DATE,
+                                        FieldType.DATE_TIME
+                                    ]}
+                                />
+                            </FormField>
+                        )}
+                    </Box>
+                    <Box borderTop="thick" paddingTop={3}>
+                        <SwitchSynced globalConfigKey={optTrackConditionKey} label="Track unit condition?" marginBottom={2} />
+                        {optTrackCondition && (
+                            <React.Fragment>
+                                <FormField label="Current condition field (Units table)">
+                                    <FieldPickerSynced
+                                        globalConfigKey={unitsConditionFieldId}
+                                        table={unitsTable}
+                                        allowedTypes={[
+                                            FieldType.SINGLE_SELECT
+                                        ]}
+                                    />
+                                </FormField>
+                                <FormField label="Condition upon check out field (Log table)">
+                                    <FieldPickerSynced
+                                        globalConfigKey={logCheckOutConditionFieldId}
+                                        table={logTable}
+                                        allowedTypes={[
+                                            FieldType.SINGLE_SELECT
+                                        ]}
+                                    />
+                                </FormField>
+                                <FormField label="Condition upon check in field (Log table)">
+                                    <FieldPickerSynced
+                                        globalConfigKey={logCheckInConditionFieldId}
+                                        table={logTable}
+                                        allowedTypes={[
+                                            FieldType.SINGLE_SELECT
+                                        ]}
+                                    />
+                                </FormField>
+                            </React.Fragment>
+                        )}
+                    </Box>
+                    <Box borderTop="thick" paddingTop={3}>
+                        <FormField label="Checked out view (Log table)">
                             <ViewPickerSynced 
                                 globalConfigKey={logViewId}
                                 table={logTable}
                             />
                         </FormField>
-                        <FormField label="Check out date field" description="Field describing the date the unit was rented" marginY={2}>
+                        <FormField label="Check out date field (Log table)">
                             <FieldPickerSynced
                                 globalConfigKey={logCheckOutDateFieldId}
                                 table={logTable}
@@ -499,7 +500,7 @@ function SettingsMenu(props) {
                                 ]}
                             />
                         </FormField>
-                        <FormField label="Check in date field" description="Field describing the date the unit was returned" marginY={2}>
+                        <FormField label="Check in date field (Log table)">
                             <FieldPickerSynced
                                 globalConfigKey={logCheckInDateFieldId}
                                 table={logTable}
@@ -509,38 +510,19 @@ function SettingsMenu(props) {
                                 ]}
                             />
                         </FormField>
-                        <Heading borderTop="thick" paddingTop={2} textColor="light" size="xsmall" marginY={3}>Optional fields</Heading>
-                        <FormField label="Condition upon check out field" marginY={2}>
-                            <FieldPickerSynced
-                                globalConfigKey={logCheckOutConditionFieldId}
-                                table={logTable}
-                                allowedTypes={[
-                                    FieldType.SINGLE_SELECT
-                                ]}
-                            />
-                        </FormField>
-                        <FormField label="Condition upon check in field" marginY={2}>
-                            <FieldPickerSynced
-                                globalConfigKey={logCheckInConditionFieldId}
-                                table={logTable}
-                                allowedTypes={[
-                                    FieldType.SINGLE_SELECT
-                                ]}
-                            />
-                        </FormField>
                     </Box>
                 </Box>
-            </Box>
-            <Box display="flex" marginTop={4}>
-                <Button
-                    variant="primary"
-                    size="large"
-                    icon="check"
-                    disabled={!props.initialSetupDone}
-                    onClick={props.onDoneClick}
-                >
-                    Done
-                </Button>
+                <Box flex="none" display="flex" justifyContent="space-between" paddingY={3} marginX={3} borderTop="thick">
+                    <Button
+                        variant="primary"
+                        size="large"
+                        icon="check"
+                        disabled={!props.initialSetupDone}
+                        onClick={props.onDoneClick}
+                    >
+                        Done
+                    </Button>
+                </Box>
             </Box>
         </React.Fragment>
     )
@@ -548,9 +530,9 @@ function SettingsMenu(props) {
 
 function BlockContainer({children}) {
     return (
-        <div id="Units-Assistant-Block" width="100%" height="100vh">
+        <div id="Units-Assistant-Block" position="absolute" top={0} left={0} right={0} bottom={0} overflow="hidden">
             <ViewportConstraint minSize={{width: 632, height: 200}}>
-                <Box padding={4} display="flex" flexDirection="column" alignItems="center" justifyContent="center" width="100%" height="100%" overflow="hidden">
+                <Box display="flex" justifyItems="center" width="100%" height="100%" overflow="hidden">
                     {children}
                 </Box>
             </ViewportConstraint>
