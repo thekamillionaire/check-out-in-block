@@ -3,9 +3,12 @@ This block is a customizable wizard which, in its most basic form, allows users 
 
 This block will make day-to-day data entry for inventory managers, IT departments, librarians, equipment rental businesses, and more all that much easier!
 
-## Directions
+[![video preview](http://img.youtube.com/vi/AZPdeZNQwO4/0.jpg)](http://www.youtube.com/watch?v=AZPdeZNQwO4 "Video preview")
 
-1. Create a custom block
-2. Select "Remix from Github"
-3. Paste this repo url: `https://github.com/thekamillionaire/check-out-in-block/`
-4. Fill in the settings. For the optional setting for tracking a unit's condition, make sure that all the condition single select fields have overlapping field option values.
+## How to remix this block
+1. Create a new base (or you can use an existing base).
+2. Create a new block in your base (see [Create a new block](https://airtable.com/developers/blocks/guides/hello-world-tutorial#create-a-new-block), selecting "Remix from Github" as your template.
+3. From the root of your new block, run `block run`.
+
+## Notes
+For the optional setting for tracking a unit's condition, make sure that all the condition single select fields have overlapping field option values.
